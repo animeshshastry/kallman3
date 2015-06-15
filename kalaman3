@@ -2,7 +2,7 @@
 
 
 
-float a,current,previous=0.0,diff,Z[3][1],X[3][1],Y[2][1],S[2][2],K[3][2],I[3][3];
+float a,current,previous=0.0,diff,Z[3][1],X[3][1],Y[2][1],S[2][2],K[3][2],I[3][3],XTEMP[3][1],PTEMP[3][3],TEMP33[3][3],TEMP33a[3][3],TEMP21[2][1],TEMP23[2][3],TEMP32[2][3],TEMP31[3][1],TEMP22[2][2],HT[3][2];
 
 float P[3][3]={{1,0,0},
                {0,1,0},
@@ -19,8 +19,46 @@ float R[2][2]={{0.1,0.1},
                {0.1,0.1}};
                
 
+               
+
+
+
+void getaccel(){
+}
+
+void getheight(){
+}
+
+void updatematrix(){
+}
+
+void printX(){
+}
+
    
-   
+void MatrixPrint(float* A, int m, int n, String label){
+	// A = input matrix (m x n)
+	int i,j;
+	Serial.println();
+	Serial.println(label);
+	for (i=0; i<m; i++){
+		for (j=0;j<n;j++){
+			Serial.print(A[n*i+j]);
+			Serial.print("\t");
+		}
+		Serial.println();
+	}
+}
+
+void MatrixCopy(float* A, int n, int m, float* B)
+{
+	int i, j, k;
+	for (i=0;i<m;i++)
+		for(j=0;j<n;j++)
+		{
+			B[n*i+j] = A[n*i+j];
+		}
+}   
 
 //Matrix Multiplication Routine
 // C = A*B
@@ -177,17 +215,6 @@ int MatrixInvert(float* A, int n)
 }
 
 
-void getaccel(){
-}
-
-void getheight(){
-}
-
-void updatematrix(){
-}
-
-void printX(){
-}
 
 void setup()
 {
@@ -212,4 +239,35 @@ void loop()
 void kalman()
 {
   
+  //Measurement update
+  MatrixMultiply((float*)H,(float*)X,2,3,1,(float*)TEMP21);
+  MatrixSubtract((float*)Z,(float*)TEMP21,2,1,(float*)Y);
+  
+  MatrixTranspose((float*)H,2,3,(float*)HT);
+  MatrixMultiply((float*)H,(float*)P,2,3,3,(float*)TEMP23);
+  MatrixMultiply((float*)TEMP23,(float*)HT,2,3,2,(float*)TEMP22);
+  MatrixAdd((float*)TEMP22,(float*)R,2,2,(float*)S);
+  
+  
+  MatrixInvert((float*)S,2);
+  MatrixMultiply((float*)P,(float*)HT,3,3,2,(float*)TEMP32);
+  MatrixMultiply((float*)TEMP32,(float*)S,3,2,2,(float*)K);
+  
+  MatrixMultiply((float*)K,(float*)Y,3,2,1,(float*)TEMP31);
+  MatrixAdd((float*)X,(float*)TEMP31,3,1,(float*)XTEMP);
+  MatrixCopy((float*)XTEMP,3,1,(float*)X);
+  
+  MatrixMultiply((float*)K,(float*)H,3,2,3,(float*)TEMP33);
+  MatrixSubtract((float*)I,(float*)TEMP33,3,3,(float*)TEMP33a);
+  MatrixMultiply((float*)TEMP33a,(float*)P,3,3,3,(float*)PTEMP);
+  MatrixCopy((float*)PTEMP,3,3,(float*)P);
+  
+  
+  //Prediction
+  MatrixMultiply((float*)F,(float*)X,3,3,1,(float*)XTEMP);
+  MatrixCopy((float*)XTEMP,3,1,(float*)X);
+  
+  MatrixTranspose((float*)F,3,3,(float*)TEMP33);
+  MatrixMultiply((float*)F,(float*)P,3,3,3,(float*)TEMP33a);
+  MatrixMultiply((float*)TEMP33a,(float*)TEMP33,3,3,3,(float*)P);  
 }
