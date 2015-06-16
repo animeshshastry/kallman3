@@ -1,7 +1,8 @@
 #include <Wire.h>
 
 
-#define scale 98
+#define scale 980
+#define NUMBER 100
 #define echoPin 18 // Echo Pin
 #define trigPin 19 // Trigger Pin
 
@@ -58,6 +59,7 @@ float wz;
 float temperature;
 float offset;
 
+float aa[NUMBER],zz[NUMBER];
 
 
 float z,a,current,previous=0.0,diff,Z[2][1],X[3][1],Y[2][1],S[2][2],K[3][2],I[3][3],XTEMP[3][1],PTEMP[3][3],TEMP33[3][3],TEMP33a[3][3],TEMP21[2][1],TEMP23[2][3],TEMP32[2][3],TEMP31[3][1],TEMP22[2][2],HT[3][2];
@@ -73,17 +75,18 @@ float F[3][3]={{1,diff,0.5*diff*diff},
 float H[2][3]={{1,0,0},
                {0,0,1}};
 
-float R[2][2]={{0.1,0.1},
-               {0.1,0.1}};
+float R[2][2]={{0.067,0},
+               {0,0.01}};
                
+
 
                
 void printX(){
   Serial.print(Z[0][0]);Serial.print('\t');
-  Serial.print(Z[1][0]);Serial.print('\t');
+  //Serial.print(Z[1][0]);Serial.print('\t');
   Serial.print(X[0][0]);Serial.print('\t');
-  Serial.print(X[1][0]);Serial.print('\t');
-  Serial.print(X[2][0]);Serial.print('\t');
+  //Serial.print(X[1][0]);Serial.print('\t');
+  //Serial.print(X[2][0]);Serial.print('\t');
   Serial.println();
 }
 
@@ -167,6 +170,119 @@ void getaccel()
   Z[1][0]=a;
   
 }
+
+
+void getoffset()
+{
+  offset=0.0;
+  for (int i=0;i<NUMBER;i++)
+  {
+    
+    getaccel();
+    getheight();
+    aa[i]=az;
+    zz[i]=z;
+
+    offset=offset+az;
+    
+  }
+  updateR();
+  offset=offset/NUMBER;
+  
+}
+
+void updateR()
+{
+  float aasum=0.0,zzsum=0.0,aaavg,zzavg,aasq[NUMBER],zzsq[NUMBER],aasumsq,zzsumsq;
+  for (int i=0;i<NUMBER;i++)
+  {
+    aasum=aasum+aa[i];
+    zzsum=zzsum+zz[i];
+    
+  }
+  aaavg=aasum/NUMBER;
+  zzavg=zzsum/NUMBER;
+  for (int i=0;i<NUMBER;i++)
+  {
+    aa[i]=aa[i]-aaavg;
+    zz[i]=zz[i]-zzavg;
+    
+  }
+  for (int i=0;i<NUMBER;i++)
+  {
+    aasq[i]=aa[i]*aa[i];
+    zzsq[i]=zz[i]*zz[i];
+  }
+  for (int i=0;i<NUMBER;i++)
+  {
+    aasumsq=aasumsq+aasq[i];
+    zzsumsq=zzsumsq+zzsq[i];
+  }
+  R[0][0]=zzsumsq/NUMBER;
+  R[1][1]=aasumsq/NUMBER;
+}
+
+void setup()
+{
+  Serial.begin(9600);
+  Serial.begin(9600);
+  initI2CMPU();
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  getoffset();
+  Serial.print(R[0][0]);Serial.print('\t');
+  Serial.print(R[1][1]);Serial.print('\t');
+  delay(2000);
+}
+
+void loop()
+{
+  getaccel();
+  getheight();
+  current=millis()/1000;
+  diff=current-previous;
+  previous=current;
+  updatematrix();
+  kalman();
+  printX();
+}
+
+void kalman()
+{
+  
+  //Measurement update
+  MatrixMultiply((float*)H,(float*)X,2,3,1,(float*)TEMP21);
+  MatrixSubtract((float*)Z,(float*)TEMP21,2,1,(float*)Y);
+  
+  MatrixTranspose((float*)H,2,3,(float*)HT);
+  MatrixMultiply((float*)H,(float*)P,2,3,3,(float*)TEMP23);
+  MatrixMultiply((float*)TEMP23,(float*)HT,2,3,2,(float*)TEMP22);
+  MatrixAdd((float*)TEMP22,(float*)R,2,2,(float*)S);
+  
+  
+  MatrixInvert((float*)S,2);
+  MatrixMultiply((float*)P,(float*)HT,3,3,2,(float*)TEMP32);
+  MatrixMultiply((float*)TEMP32,(float*)S,3,2,2,(float*)K);
+  
+  MatrixMultiply((float*)K,(float*)Y,3,2,1,(float*)TEMP31);
+  MatrixAdd((float*)X,(float*)TEMP31,3,1,(float*)XTEMP);
+  MatrixCopy((float*)XTEMP,3,1,(float*)X);
+  
+  MatrixMultiply((float*)K,(float*)H,3,2,3,(float*)TEMP33);
+  MatrixSubtract((float*)I,(float*)TEMP33,3,3,(float*)TEMP33a);
+  MatrixMultiply((float*)TEMP33a,(float*)P,3,3,3,(float*)PTEMP);
+  MatrixCopy((float*)PTEMP,3,3,(float*)P);
+  
+  
+  //Prediction
+  MatrixMultiply((float*)F,(float*)X,3,3,1,(float*)XTEMP);
+  MatrixCopy((float*)XTEMP,3,1,(float*)X);
+  
+  MatrixTranspose((float*)F,3,3,(float*)TEMP33);
+  MatrixMultiply((float*)F,(float*)P,3,3,3,(float*)TEMP33a);
+  MatrixMultiply((float*)TEMP33a,(float*)TEMP33,3,3,3,(float*)P);  
+}
+
 
    
 void MatrixPrint(float* A, int m, int n, String label){
@@ -347,60 +463,3 @@ int MatrixInvert(float* A, int n)
 	return 1;
 }
 
-
-
-void setup()
-{
-  Serial.begin(9600);
-  //initI2CMPU();
-  
-  
-}
-
-void loop()
-{
-  getaccel();
-  getheight();
-  current=millis()/1000;
-  diff=current-previous;
-  previous=current;
-  updatematrix();
-  kalman();
-  printX();
-}
-
-void kalman()
-{
-  
-  //Measurement update
-  MatrixMultiply((float*)H,(float*)X,2,3,1,(float*)TEMP21);
-  MatrixSubtract((float*)Z,(float*)TEMP21,2,1,(float*)Y);
-  
-  MatrixTranspose((float*)H,2,3,(float*)HT);
-  MatrixMultiply((float*)H,(float*)P,2,3,3,(float*)TEMP23);
-  MatrixMultiply((float*)TEMP23,(float*)HT,2,3,2,(float*)TEMP22);
-  MatrixAdd((float*)TEMP22,(float*)R,2,2,(float*)S);
-  
-  
-  MatrixInvert((float*)S,2);
-  MatrixMultiply((float*)P,(float*)HT,3,3,2,(float*)TEMP32);
-  MatrixMultiply((float*)TEMP32,(float*)S,3,2,2,(float*)K);
-  
-  MatrixMultiply((float*)K,(float*)Y,3,2,1,(float*)TEMP31);
-  MatrixAdd((float*)X,(float*)TEMP31,3,1,(float*)XTEMP);
-  MatrixCopy((float*)XTEMP,3,1,(float*)X);
-  
-  MatrixMultiply((float*)K,(float*)H,3,2,3,(float*)TEMP33);
-  MatrixSubtract((float*)I,(float*)TEMP33,3,3,(float*)TEMP33a);
-  MatrixMultiply((float*)TEMP33a,(float*)P,3,3,3,(float*)PTEMP);
-  MatrixCopy((float*)PTEMP,3,3,(float*)P);
-  
-  
-  //Prediction
-  MatrixMultiply((float*)F,(float*)X,3,3,1,(float*)XTEMP);
-  MatrixCopy((float*)XTEMP,3,1,(float*)X);
-  
-  MatrixTranspose((float*)F,3,3,(float*)TEMP33);
-  MatrixMultiply((float*)F,(float*)P,3,3,3,(float*)TEMP33a);
-  MatrixMultiply((float*)TEMP33a,(float*)TEMP33,3,3,3,(float*)P);  
-}
